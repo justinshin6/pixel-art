@@ -1,0 +1,342 @@
+'use client';
+
+import { useState } from 'react';
+
+export default function Home() {
+  const [isPressed, setIsPressed] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [isLogin, setIsLogin] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  const handlePlay = () => {
+    setShowModal(true);
+  };
+
+  const handleCloseModal = () => {
+    setShowModal(false);
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    console.log(isLogin ? 'Login submitted' : 'Signup submitted');
+    // Authentication logic will go here
+    setIsAuthenticated(true);
+    setShowModal(false);
+  };
+
+  const handleGuestSignIn = () => {
+    console.log('Guest sign in');
+    setIsAuthenticated(true);
+    setShowModal(false);
+  };
+
+  // Show difficulty selection screen if authenticated
+  if (isAuthenticated) {
+    return <DifficultySelection />;
+  }
+
+  return (
+    <main className="min-h-screen w-full bg-gradient-to-b from-[#1a1a2e] to-[#16213e] flex items-center justify-center overflow-x-hidden">
+      <div className="flex flex-col items-center justify-center space-y-16 w-full px-4">
+        {/* Title */}
+        <div className="flex flex-col items-center justify-center space-y-2 w-full">
+          <h1 
+            className="text-6xl sm:text-7xl md:text-8xl font-black font-mono text-[#e94560] tracking-wider text-center"
+            style={{
+              textShadow: '0 0 40px rgba(233, 69, 96, 0.6), 0 0 20px rgba(233, 69, 96, 0.4)',
+            }}
+          >
+            PIXEL
+          </h1>
+          <h1 
+            className="text-6xl sm:text-7xl md:text-8xl font-black font-mono tracking-wider bg-gradient-to-r from-[#e94560] to-[#ff6b6b] bg-clip-text text-transparent text-center"
+          >
+            ART
+          </h1>
+        </div>
+
+        {/* Decorative Pixel Grid */}
+        <div className="flex flex-col items-center justify-center gap-1 w-full">
+          {[0, 1, 2].map((row) => (
+            <div key={row} className="flex gap-1 justify-center">
+              {[0, 1, 2, 3, 4, 5, 6, 7].map((col) => {
+                const colors = ['#e94560', '#ff6b6b', '#0f3460', '#533483'];
+                const color = colors[(row + col) % colors.length];
+                const pattern = (row + col) % 3;
+                const opacity = pattern === 0 ? 1 : pattern === 1 ? 0.7 : 0.4;
+                
+                return (
+                  <div
+                    key={col}
+                    className="w-8 h-8 sm:w-9 sm:h-9 rounded flex-shrink-0"
+                    style={{
+                      backgroundColor: color,
+                      opacity: opacity,
+                    }}
+                  />
+                );
+              })}
+            </div>
+          ))}
+        </div>
+
+        {/* Play Button */}
+        <div className="flex justify-center w-full">
+          <button
+            onClick={handlePlay}
+            onMouseDown={() => setIsPressed(true)}
+            onMouseUp={() => setIsPressed(false)}
+            onMouseLeave={() => setIsPressed(false)}
+            onTouchStart={() => setIsPressed(true)}
+            onTouchEnd={() => setIsPressed(false)}
+            className="px-12 sm:px-16 py-4 sm:py-5 bg-gradient-to-b from-[#e94560] to-[#c73659] rounded-2xl shadow-2xl transition-transform duration-200 active:scale-95 cursor-pointer"
+            style={{
+              transform: isPressed ? 'scale(0.95)' : 'scale(1)',
+              boxShadow: '0 8px 30px rgba(233, 69, 96, 0.5)',
+            }}
+          >
+            <div className="flex items-center justify-center gap-3 text-white">
+              <svg 
+                className="w-5 h-5 sm:w-6 sm:h-6 fill-current" 
+                viewBox="0 0 24 24"
+              >
+                <path d="M8 5v14l11-7z"/>
+              </svg>
+              <span className="text-2xl sm:text-3xl font-bold font-mono tracking-wider">
+                PLAY
+              </span>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      {/* Login/Signup Modal */}
+      {showModal && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4 z-50"
+          onClick={handleCloseModal}
+        >
+          <div 
+            className="bg-gradient-to-b from-[#1a1a2e] to-[#16213e] rounded-2xl shadow-2xl w-full max-w-md border-2 border-[#e94560] relative"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Close Button */}
+            <button
+              onClick={handleCloseModal}
+              className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors cursor-pointer"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            {/* Modal Content */}
+            <div className="p-8">
+              {/* Toggle Buttons */}
+              <div className="flex gap-2 mb-6">
+                <button
+                  onClick={() => setIsLogin(true)}
+                  className={`flex-1 py-3 rounded-lg font-bold font-mono transition-all cursor-pointer ${
+                    isLogin 
+                      ? 'bg-gradient-to-r from-[#e94560] to-[#ff6b6b] text-white' 
+                      : 'bg-[#0f3460] text-gray-400 hover:text-white'
+                  }`}
+                >
+                  LOGIN
+                </button>
+                <button
+                  onClick={() => setIsLogin(false)}
+                  className={`flex-1 py-3 rounded-lg font-bold font-mono transition-all cursor-pointer ${
+                    !isLogin 
+                      ? 'bg-gradient-to-r from-[#e94560] to-[#ff6b6b] text-white' 
+                      : 'bg-[#0f3460] text-gray-400 hover:text-white'
+                  }`}
+                >
+                  SIGN UP
+                </button>
+              </div>
+
+              {/* Form */}
+              <form onSubmit={handleSubmit} className="space-y-4">
+                {!isLogin && (
+                  <div>
+                    <label className="block text-sm font-mono text-gray-300 mb-2">
+                      Username
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      className="w-full px-4 py-3 bg-[#0f3460] border border-[#533483] rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-[#e94560] transition-colors"
+                      placeholder="Choose a username"
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-sm font-mono text-gray-300 mb-2">
+                    Email
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    className="w-full px-4 py-3 bg-[#0f3460] border border-[#533483] rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-[#e94560] transition-colors"
+                    placeholder="your@email.com"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-mono text-gray-300 mb-2">
+                    Password
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    className="w-full px-4 py-3 bg-[#0f3460] border border-[#533483] rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-[#e94560] transition-colors"
+                    placeholder="••••••••"
+                  />
+                </div>
+
+                {!isLogin && (
+                  <div>
+                    <label className="block text-sm font-mono text-gray-300 mb-2">
+                      Confirm Password
+                    </label>
+                    <input
+                      type="password"
+                      required
+                      className="w-full px-4 py-3 bg-[#0f3460] border border-[#533483] rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-[#e94560] transition-colors"
+                      placeholder="••••••••"
+                    />
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  className="w-full py-3 bg-gradient-to-r from-[#e94560] to-[#ff6b6b] rounded-lg font-bold font-mono text-white hover:shadow-lg hover:shadow-[#e94560]/50 transition-all cursor-pointer"
+                >
+                  {isLogin ? 'LOGIN' : 'CREATE ACCOUNT'}
+                </button>
+              </form>
+
+              {/* Guest Sign In */}
+              <div className="relative my-6">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-gray-600"></div>
+                </div>
+                <div className="relative flex justify-center text-sm">
+                  <span className="px-2 bg-gradient-to-b from-[#1a1a2e] to-[#16213e] text-gray-400 font-mono">
+                    OR
+                  </span>
+                </div>
+              </div>
+
+              <button
+                onClick={handleGuestSignIn}
+                className="w-full py-3 bg-[#0f3460] border border-[#533483] rounded-lg font-bold font-mono text-white hover:border-[#e94560] hover:shadow-lg transition-all cursor-pointer"
+              >
+                CONTINUE AS GUEST
+              </button>
+
+              {/* Footer Text */}
+              <p className="text-center text-sm text-gray-400 mt-4 font-mono">
+                {isLogin ? "New to Pixel Art?" : "Already have an account?"}{' '}
+                <button
+                  onClick={() => setIsLogin(!isLogin)}
+                  className="text-[#e94560] hover:text-[#ff6b6b] font-bold cursor-pointer"
+                >
+                  {isLogin ? 'Sign up' : 'Login'}
+                </button>
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+    </main>
+  );
+}
+
+// Difficulty Selection Component
+function DifficultySelection() {
+  const [selectedDifficulty, setSelectedDifficulty] = useState<string | null>(null);
+
+  const difficulties = [
+    { 
+      name: 'EASY', 
+      color: 'from-green-500 to-green-600',
+      hoverColor: 'hover:shadow-green-500/50',
+      description: 'Perfect for beginners'
+    },
+    { 
+      name: 'MEDIUM', 
+      color: 'from-yellow-500 to-orange-500',
+      hoverColor: 'hover:shadow-yellow-500/50',
+      description: 'A fun challenge'
+    },
+    { 
+      name: 'HARD', 
+      color: 'from-red-500 to-red-700',
+      hoverColor: 'hover:shadow-red-500/50',
+      description: 'For experts only'
+    },
+  ];
+
+  const handleDifficultySelect = (difficulty: string) => {
+    setSelectedDifficulty(difficulty);
+    console.log(`Selected difficulty: ${difficulty}`);
+    // Game will start here
+  };
+
+  return (
+    <main className="min-h-screen w-full bg-gradient-to-b from-[#1a1a2e] to-[#16213e] flex items-center justify-center overflow-x-hidden p-4">
+      <div className="flex flex-col items-center justify-center space-y-12 w-full max-w-2xl">
+        {/* Title */}
+        <div className="flex flex-col items-center justify-center space-y-2 w-full">
+          <h1 
+            className="text-5xl sm:text-6xl md:text-7xl font-black font-mono text-[#e94560] tracking-wider text-center"
+            style={{
+              textShadow: '0 0 40px rgba(233, 69, 96, 0.6), 0 0 20px rgba(233, 69, 96, 0.4)',
+            }}
+          >
+            PIXEL ART
+          </h1>
+          <p className="text-gray-400 font-mono text-lg text-center mt-4">
+            Choose Your Difficulty
+          </p>
+        </div>
+
+        {/* Difficulty Buttons */}
+        <div className="flex flex-col gap-6 w-full max-w-md">
+          {difficulties.map((difficulty) => (
+            <button
+              key={difficulty.name}
+              onClick={() => handleDifficultySelect(difficulty.name)}
+              className={`group relative py-6 px-8 bg-gradient-to-r ${difficulty.color} rounded-2xl shadow-2xl transition-all duration-200 cursor-pointer hover:scale-105 ${difficulty.hoverColor}`}
+              style={{
+                boxShadow: selectedDifficulty === difficulty.name 
+                  ? '0 12px 40px rgba(233, 69, 96, 0.6)' 
+                  : '0 8px 30px rgba(0, 0, 0, 0.5)',
+              }}
+            >
+              <div className="flex flex-col items-center text-white">
+                <span className="text-3xl font-black font-mono tracking-wider">
+                  {difficulty.name}
+                </span>
+                <span className="text-sm font-mono opacity-90 mt-1">
+                  {difficulty.description}
+                </span>
+              </div>
+            </button>
+          ))}
+        </div>
+
+        {/* Back to Home - Optional */}
+        <button
+          onClick={() => window.location.reload()}
+          className="text-gray-400 hover:text-white font-mono text-sm cursor-pointer transition-colors"
+        >
+          ← Back to Home
+        </button>
+      </div>
+    </main>
+  );
+}
