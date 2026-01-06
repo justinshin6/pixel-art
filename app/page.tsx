@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { signUp, signIn, signOut, getCurrentUserProfile, isSessionValid, User } from '@/lib/supabase';
+import { useState, useEffect, useCallback } from 'react';
+import { signUp, signIn, signOut, getCurrentUserProfile, isSessionValid, User, getUnplayedPuzzleByDifficulty, Puzzle } from '@/lib/supabase';
 import { useInactivityTimeout } from '@/lib/useInactivityTimeout';
 import Game from '@/components/Game';
 import Tutorial from '@/components/Tutorial';
@@ -20,6 +20,17 @@ export default function Home() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  
+  // In-memory storage for guest users' played puzzles (resets on refresh)
+  // Moved to Home component so it persists across difficulty selections
+  const [guestPlayedPuzzles, setGuestPlayedPuzzles] = useState<string[]>([]);
+  
+  // Debug: Log state changes
+  useEffect(() => {
+    if (guestPlayedPuzzles.length > 0) {
+      console.log('📊 HOME: guestPlayedPuzzles STATE UPDATED:', guestPlayedPuzzles);
+    }
+  }, [guestPlayedPuzzles]);
 
   // Check if user is already logged in on mount
   useEffect(() => {
@@ -144,18 +155,22 @@ export default function Home() {
 
   const handleBackHome = () => {
     setShowDifficulty(false);
-    // Clear guest status when going back home
+    // Clear guest status and played puzzles when going back home
     if (isGuest) {
       setIsGuest(false);
+      setGuestPlayedPuzzles([]); // Reset guest puzzle history
     }
   };
 
   // Show difficulty selection screen
   if (showDifficulty) {
     return <DifficultySelection 
-      username={isGuest ? null : currentUser?.username} 
+      username={isGuest ? null : currentUser?.username}
+      userId={currentUser?.id || null}
       onBackHome={handleBackHome} 
-      onSignOut={handleSignOut} 
+      onSignOut={handleSignOut}
+      guestPlayedPuzzles={guestPlayedPuzzles}
+      setGuestPlayedPuzzles={setGuestPlayedPuzzles}
     />;
   }
 
@@ -395,10 +410,28 @@ export default function Home() {
 }
 
 // Difficulty Selection Component
-function DifficultySelection({ username, onBackHome, onSignOut }: { username?: string | null, onBackHome: () => void, onSignOut: () => void }) {
+function DifficultySelection({ 
+  username, 
+  userId, 
+  onBackHome, 
+  onSignOut,
+  guestPlayedPuzzles,
+  setGuestPlayedPuzzles
+}: { 
+  username?: string | null; 
+  userId?: string | null; 
+  onBackHome: () => void; 
+  onSignOut: () => void;
+  guestPlayedPuzzles: string[];
+  setGuestPlayedPuzzles: React.Dispatch<React.SetStateAction<string[]>>;
+}) {
   const [selectedDifficulty, setSelectedDifficulty] = useState<string | null>(null);
+  const [currentPuzzle, setCurrentPuzzle] = useState<Puzzle | null>(null);
   const [gameStarted, setGameStarted] = useState(false);
   const [showTutorial, setShowTutorial] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [noPuzzlesLeft, setNoPuzzlesLeft] = useState(false);
 
   const difficulties = [
     { 
@@ -421,19 +454,143 @@ function DifficultySelection({ username, onBackHome, onSignOut }: { username?: s
     },
   ];
 
-  const handleDifficultySelect = (difficulty: string) => {
-    setSelectedDifficulty(difficulty);
-    setGameStarted(true);
+  const handleDifficultySelect = async (difficulty: string) => {
+    console.log('🎯 handleDifficultySelect called');
+    console.log('Current guestPlayedPuzzles before fetch:', guestPlayedPuzzles);
+    
+    setLoading(true);
+    setError(null);
+    setNoPuzzlesLeft(false);
+    
+    try {
+      console.log('=== FETCHING PUZZLE ===');
+      console.log('Difficulty:', difficulty);
+      console.log('User ID:', userId);
+      console.log('Is Guest:', !userId);
+      if (!userId) {
+        console.log('Guest played puzzles (state):', guestPlayedPuzzles);
+        console.log('Guest played puzzles length:', guestPlayedPuzzles.length);
+        console.log('Guest played puzzles IDs:', guestPlayedPuzzles);
+      }
+      
+      // Fetch an unplayed puzzle for this difficulty
+      const puzzle = await getUnplayedPuzzleByDifficulty(
+        userId || null, 
+        difficulty.toLowerCase() as 'easy' | 'medium' | 'hard',
+        !userId ? guestPlayedPuzzles : undefined // Pass guest played puzzles if not logged in
+      );
+      
+      if (!puzzle) {
+        console.log('❌ No puzzle returned - all played');
+        console.log('Setting noPuzzlesLeft=true, gameStarted=true');
+        // No puzzles available
+        setNoPuzzlesLeft(true);
+        setSelectedDifficulty(difficulty);
+        setGameStarted(true);
+        console.log('Should now show No Puzzles Left screen');
+        return;
+      }
+      
+      console.log('Fetched puzzle:', puzzle.id);
+      console.log('====================');
+      
+      setCurrentPuzzle(puzzle);
+      setSelectedDifficulty(difficulty);
+      setGameStarted(true);
+    } catch (err) {
+      console.error('Error fetching puzzle:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load puzzle');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleBackToDifficulty = () => {
+    console.log('⬅️ Going back to difficulty selection');
+    console.log('guestPlayedPuzzles at back:', guestPlayedPuzzles);
     setGameStarted(false);
     setSelectedDifficulty(null);
+    setCurrentPuzzle(null);
+    setError(null);
+    setNoPuzzlesLeft(false);
   };
+  
+  const handleNextPuzzle = async () => {
+    if (!selectedDifficulty) return;
+    
+    console.log('➡️ Fetching next puzzle for:', selectedDifficulty);
+    setCurrentPuzzle(null);
+    setGameStarted(false);
+    
+    // Fetch a new puzzle with the same difficulty
+    await handleDifficultySelect(selectedDifficulty);
+  };
+  
+  const handleGuestPuzzlePlayed = useCallback((puzzleId: string) => {
+    // Add puzzle to guest's played list (in-memory, max 100)
+    const cleanPuzzleId = String(puzzleId).trim();
+    
+    setGuestPlayedPuzzles(prev => {
+      // Check if already exists
+      if (prev.includes(cleanPuzzleId)) {
+        return prev;
+      }
+      
+      // Add to end
+      const updated = [...prev, cleanPuzzleId];
+      
+      // Keep only last 100
+      const result = updated.length > 100 ? updated.slice(-100) : updated;
+      console.log('✅ Guest puzzle tracked:', cleanPuzzleId, '- Total played:', result.length);
+      return result;
+    });
+  }, [setGuestPlayedPuzzles]); // Include setGuestPlayedPuzzles in deps
+
+  // If no puzzles left, show the no puzzles screen
+  if (gameStarted && noPuzzlesLeft) {
+    console.log('🎉 Rendering No Puzzles Left screen');
+    console.log('gameStarted:', gameStarted, 'noPuzzlesLeft:', noPuzzlesLeft);
+    return (
+      <main className="min-h-screen w-full bg-gradient-to-b from-[#1a1a2e] to-[#16213e] flex items-center justify-center p-6">
+        <div className="flex flex-col items-center space-y-8 max-w-2xl">
+          <div className="bg-gradient-to-b from-[#0f3460] to-[#1a1a2e] border-4 border-[#e94560] rounded-2xl p-12">
+            <div className="flex flex-col items-center space-y-6">
+              <div className="text-8xl">🎉</div>
+              <h2 className="text-4xl font-black font-mono text-[#e94560] text-center">
+                NO PUZZLES LEFT!
+              </h2>
+              <p className="text-white font-mono text-center text-lg">
+                You&apos;ve played all available <span className="text-[#e94560] font-bold">{selectedDifficulty}</span> puzzles.
+              </p>
+              <p className="text-gray-400 font-mono text-center text-sm">
+                {username 
+                  ? "Come back later for new puzzles or try a different difficulty!"
+                  : "Try a different difficulty or check back later for new puzzles!"
+                }
+              </p>
+              <button
+                onClick={handleBackToDifficulty}
+                className="mt-6 px-8 py-3 rounded-lg font-bold font-mono text-white bg-gradient-to-r from-[#e94560] to-[#ff6b6b] hover:shadow-lg hover:shadow-[#e94560]/50 transition-all cursor-pointer"
+              >
+                BACK TO DIFFICULTY SELECT
+              </button>
+            </div>
+          </div>
+        </div>
+      </main>
+    );
+  }
 
   // If game is started, show the game component
-  if (gameStarted && selectedDifficulty) {
-    return <Game difficulty={selectedDifficulty} onBack={handleBackToDifficulty} />;
+  if (gameStarted && selectedDifficulty && currentPuzzle) {
+    return <Game 
+      puzzle={currentPuzzle}
+      userId={userId || null}
+      difficulty={selectedDifficulty} 
+      onBack={handleBackToDifficulty}
+      onNextPuzzle={handleNextPuzzle}
+      onGuestPuzzlePlayed={!userId ? handleGuestPuzzlePlayed : undefined}
+    />;
   }
 
   return (
@@ -471,11 +628,18 @@ function DifficultySelection({ username, onBackHome, onSignOut }: { username?: s
 
         {/* Difficulty Buttons */}
         <div className="flex flex-col gap-6 w-full max-w-md">
+          {error && (
+            <div className="p-4 bg-red-500/20 border border-red-500 rounded-lg text-red-300 text-sm font-mono text-center">
+              {error}
+            </div>
+          )}
+          
           {difficulties.map((difficulty) => (
             <button
               key={difficulty.name}
               onClick={() => handleDifficultySelect(difficulty.name)}
-              className={`group relative py-6 px-8 bg-gradient-to-r ${difficulty.color} rounded-2xl shadow-2xl transition-all duration-200 cursor-pointer hover:scale-105 ${difficulty.hoverColor}`}
+              disabled={loading}
+              className={`group relative py-6 px-8 bg-gradient-to-r ${difficulty.color} rounded-2xl shadow-2xl transition-all duration-200 cursor-pointer hover:scale-105 ${difficulty.hoverColor} disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100`}
               style={{
                 boxShadow: selectedDifficulty === difficulty.name 
                   ? '0 12px 40px rgba(233, 69, 96, 0.6)' 
@@ -484,7 +648,7 @@ function DifficultySelection({ username, onBackHome, onSignOut }: { username?: s
             >
               <div className="flex flex-col items-center text-white">
                 <span className="text-3xl font-black font-mono tracking-wider">
-                  {difficulty.name}
+                  {loading ? 'LOADING...' : difficulty.name}
                 </span>
                 <span className="text-sm font-mono opacity-90 mt-1">
                   {difficulty.description}

@@ -1,14 +1,19 @@
 'use client';
 
-import { useState } from 'react';
-import { Grid, Color, validateSolution, overlayGrids, easyPuzzle } from '@/lib/gameLogic';
+import { useState, useEffect } from 'react';
+import { Grid, Color, validateSolution, overlayGrids } from '@/lib/gameLogic';
+import { Puzzle, addPuzzleToRecentQueue } from '@/lib/supabase';
 
 interface GameProps {
+  puzzle: Puzzle;
+  userId: string | null;
   difficulty: string;
   onBack: () => void;
+  onNextPuzzle: () => void;
+  onGuestPuzzlePlayed?: (puzzleId: string) => void;
 }
 
-export default function Game({ difficulty, onBack }: GameProps) {
+export default function Game({ puzzle, userId, difficulty, onBack, onNextPuzzle, onGuestPuzzlePlayed }: GameProps) {
   const [selectedIndices, setSelectedIndices] = useState<number[]>([]);
   const [showResult, setShowResult] = useState(false);
   const [isCorrect, setIsCorrect] = useState(false);
@@ -16,7 +21,41 @@ export default function Game({ difficulty, onBack }: GameProps) {
   const [animationPhase, setAnimationPhase] = useState(0); // 0: none, 1: blur, 2: show squares, 3: move first, 4: move second, 5: move third, 6: success
   const [showIncorrectShake, setShowIncorrectShake] = useState(false);
 
-  const puzzle = easyPuzzle; // For now, just using the easy puzzle
+  // Convert puzzle data from database format
+  const gamePuzzle = {
+    target: puzzle.target_grid as Grid,
+    availableGrids: puzzle.available_grids as Grid[],
+    solution: puzzle.solution_indices
+  };
+
+  // Track this puzzle as seen when the component mounts
+  useEffect(() => {
+    const trackPuzzle = async () => {
+      if (userId && puzzle.id) {
+        // Logged-in user: Track in database
+        try {
+          console.log('=== TRACKING PUZZLE (Logged In) ===');
+          console.log('User ID:', userId);
+          console.log('Puzzle ID:', puzzle.id);
+          console.log('Puzzle ID type:', typeof puzzle.id);
+          const result = await addPuzzleToRecentQueue(userId, puzzle.id);
+          console.log('Tracking result - queue now contains:', result.length, 'puzzles');
+          console.log('===================================');
+        } catch (err) {
+          console.error('Error tracking puzzle on mount:', err);
+        }
+      } else if (!userId && onGuestPuzzlePlayed && puzzle.id) {
+        // Guest user: Track in memory
+        console.log('=== TRACKING PUZZLE (Guest) ===');
+        console.log('Puzzle ID:', puzzle.id);
+        onGuestPuzzlePlayed(puzzle.id);
+        console.log('Guest puzzle tracked in memory');
+        console.log('================================');
+      }
+    };
+    
+    trackPuzzle();
+  }, [userId, puzzle.id, onGuestPuzzlePlayed]);
 
   const handleGridClick = (index: number) => {
     if (selectedIndices.includes(index)) {
@@ -29,9 +68,9 @@ export default function Game({ difficulty, onBack }: GameProps) {
     setShowResult(false);
   };
 
-  const handleSubmit = () => {
-    const selectedGrids = selectedIndices.map(i => puzzle.availableGrids[i]);
-    const correct = validateSolution(selectedGrids, puzzle.target);
+  const handleSubmit = async () => {
+    const selectedGrids = selectedIndices.map(i => gamePuzzle.availableGrids[i]);
+    const correct = validateSolution(selectedGrids, gamePuzzle.target);
     setIsCorrect(correct);
     setIsAnimating(true);
 
@@ -99,14 +138,14 @@ export default function Game({ difficulty, onBack }: GameProps) {
         <div className="flex-shrink-0">
           <h3 className="text-white font-mono text-2xl mb-4 text-center">TARGET</h3>
           <div className="bg-[#0f3460] border-4 border-[#e94560] rounded-xl p-8">
-            <GridDisplay grid={puzzle.target} size="large" />
+            <GridDisplay grid={gamePuzzle.target} size="large" />
           </div>
         </div>
 
         {/* Right Side - Available Squares */}
         <div className="flex-shrink-0">
           <div className="grid grid-cols-3 gap-5">
-            {puzzle.availableGrids.map((grid, index) => {
+            {gamePuzzle.availableGrids.map((grid, index) => {
               const isSelected = selectedIndices.includes(index);
               const shouldShake = showIncorrectShake && isSelected;
               
@@ -165,7 +204,7 @@ export default function Game({ difficulty, onBack }: GameProps) {
                       ? overlayGrids(
                           selectedIndices
                             .slice(0, Math.min(animationPhase - 2, 3))
-                            .map(idx => puzzle.availableGrids[idx])
+                            .map(idx => gamePuzzle.availableGrids[idx])
                         )
                       : [
                           ['X', 'X', 'X'],
@@ -195,7 +234,7 @@ export default function Game({ difficulty, onBack }: GameProps) {
                       }}
                     >
                       <div className="bg-[#0f3460] p-2 rounded-lg border-2 border-[#533483]">
-                        <GridDisplay grid={puzzle.availableGrids[index]} size="small" />
+                        <GridDisplay grid={gamePuzzle.availableGrids[index]} size="small" />
                       </div>
                     </div>
                   );
@@ -216,12 +255,20 @@ export default function Game({ difficulty, onBack }: GameProps) {
             <p className="text-white font-mono text-center mb-6">
               You found the right combination!
             </p>
-            <button
-              onClick={handleReset}
-              className="w-full px-8 py-3 rounded-lg font-bold font-mono text-white bg-gradient-to-r from-[#e94560] to-[#ff6b6b] hover:shadow-lg transition-all cursor-pointer"
-            >
-              PLAY AGAIN
-            </button>
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={onNextPuzzle}
+                className="w-full px-8 py-3 rounded-lg font-bold font-mono text-white bg-gradient-to-r from-[#e94560] to-[#ff6b6b] hover:shadow-lg transition-all cursor-pointer"
+              >
+                NEXT PUZZLE
+              </button>
+              <button
+                onClick={handleReset}
+                className="w-full px-8 py-3 rounded-lg font-bold font-mono text-white bg-[#533483] hover:bg-[#6b4a9e] transition-all cursor-pointer"
+              >
+                TRY AGAIN
+              </button>
+            </div>
           </div>
         </div>
       )}

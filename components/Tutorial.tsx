@@ -1,11 +1,43 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Grid, Color, overlayGrids, easyPuzzle } from '@/lib/gameLogic';
+import { Grid, Color, overlayGrids } from '@/lib/gameLogic';
 
 export default function Tutorial() {
   const [animationPhase, setAnimationPhase] = useState(0);
-  const puzzle = easyPuzzle;
+  
+  // Tutorial example puzzle (hardcoded for demonstration)
+  const puzzle = {
+    target: [
+      ['R', 'B', 'X'],
+      ['R', 'B', 'Y'],
+      ['X', 'X', 'Y']
+    ] as Grid,
+    
+    availableGrids: [
+      // Grid 0 - Red column
+      [
+        ['R', 'X', 'X'],
+        ['R', 'X', 'X'],
+        ['X', 'X', 'X']
+      ],
+      // Grid 1 - Blue column
+      [
+        ['X', 'B', 'X'],
+        ['X', 'B', 'X'],
+        ['X', 'X', 'X']
+      ],
+      // Grid 2 - Yellow corner
+      [
+        ['X', 'X', 'X'],
+        ['X', 'X', 'Y'],
+        ['X', 'X', 'Y']
+      ],
+    ] as Grid[],
+    
+    solution: [0, 1, 2]
+  };
+  
   const selectedIndices = puzzle.solution; // [0, 1, 2]
 
   useEffect(() => {
@@ -60,7 +92,6 @@ export default function Tutorial() {
                     ['X', 'X', 'X']
                   ] as Grid
               } 
-              size="tutorial" 
             />
           </div>
         </div>
@@ -80,7 +111,7 @@ export default function Tutorial() {
                 }}
               >
                 <div className="bg-[#1a1a2e] p-1.5 rounded border border-[#533483]">
-                  <GridDisplay grid={puzzle.availableGrids[index]} size="tutorial" />
+                  <GridDisplay grid={puzzle.availableGrids[index]} />
                 </div>
               </div>
             );
@@ -96,7 +127,7 @@ export default function Tutorial() {
 }
 
 // Component to display a single grid
-function GridDisplay({ grid, size }: { grid: Grid; size: 'tutorial' }) {
+function GridDisplay({ grid }: { grid: Grid }) {
   const cellSize = 'w-4 h-4';
   const gap = 'gap-0.5';
   const padding = 'p-1';
