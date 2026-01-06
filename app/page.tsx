@@ -3,12 +3,15 @@
 import { useState, useEffect } from 'react';
 import { signUp, signIn, signOut, getCurrentUserProfile, isSessionValid, User } from '@/lib/supabase';
 import { useInactivityTimeout } from '@/lib/useInactivityTimeout';
+import Game from '@/components/Game';
+import Tutorial from '@/components/Tutorial';
 
 export default function Home() {
   const [isPressed, setIsPressed] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [isLogin, setIsLogin] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isGuest, setIsGuest] = useState(false);
   const [showDifficulty, setShowDifficulty] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [email, setEmail] = useState('');
@@ -26,6 +29,7 @@ export default function Home() {
         if (!isValid) {
           setIsAuthenticated(false);
           setCurrentUser(null);
+          setIsGuest(false);
           setShowDifficulty(false);
           return;
         }
@@ -34,11 +38,13 @@ export default function Home() {
         if (profile) {
           setCurrentUser(profile);
           setIsAuthenticated(true);
+          setIsGuest(false);
         }
       } catch {
         // User not logged in
         setIsAuthenticated(false);
         setCurrentUser(null);
+        setIsGuest(false);
       }
     };
     checkUser();
@@ -48,19 +54,19 @@ export default function Home() {
     return () => clearInterval(interval);
   }, []);
 
-  // Auto-logout after 5 minutes of inactivity
+  // Auto-logout after 5 minutes of inactivity (only for real users, not guests)
   useInactivityTimeout(() => {
-    if (isAuthenticated) {
+    if (isAuthenticated && currentUser) {
       handleSignOut();
     }
   }, 5); // 5 minutes timeout
 
   const handlePlay = () => {
-    if (isAuthenticated) {
-      // If already logged in, go straight to difficulty
+    if (isAuthenticated && currentUser) {
+      // If actually logged in with account, go straight to difficulty
       setShowDifficulty(true);
     } else {
-      // Otherwise show login modal
+      // Otherwise show login modal (includes guests who went back)
       setShowModal(true);
     }
   };
@@ -116,9 +122,13 @@ export default function Home() {
 
   const handleSignOut = async () => {
     try {
-      await signOut();
+      if (currentUser) {
+        // Only call signOut if there's an actual user logged in
+        await signOut();
+      }
       setCurrentUser(null);
       setIsAuthenticated(false);
+      setIsGuest(false);
       setShowDifficulty(false);
     } catch (err) {
       console.error('Error signing out:', err);
@@ -126,7 +136,7 @@ export default function Home() {
   };
 
   const handleGuestSignIn = () => {
-    setIsAuthenticated(true);
+    setIsGuest(true);
     setShowModal(false);
     setShowDifficulty(true);
     setCurrentUser(null); // Guest has no profile
@@ -134,11 +144,19 @@ export default function Home() {
 
   const handleBackHome = () => {
     setShowDifficulty(false);
+    // Clear guest status when going back home
+    if (isGuest) {
+      setIsGuest(false);
+    }
   };
 
   // Show difficulty selection screen
   if (showDifficulty) {
-    return <DifficultySelection username={currentUser?.username} onBackHome={handleBackHome} onSignOut={handleSignOut} />;
+    return <DifficultySelection 
+      username={isGuest ? null : currentUser?.username} 
+      onBackHome={handleBackHome} 
+      onSignOut={handleSignOut} 
+    />;
   }
 
   return (
@@ -379,6 +397,8 @@ export default function Home() {
 // Difficulty Selection Component
 function DifficultySelection({ username, onBackHome, onSignOut }: { username?: string | null, onBackHome: () => void, onSignOut: () => void }) {
   const [selectedDifficulty, setSelectedDifficulty] = useState<string | null>(null);
+  const [gameStarted, setGameStarted] = useState(false);
+  const [showTutorial, setShowTutorial] = useState(false);
 
   const difficulties = [
     { 
@@ -403,9 +423,18 @@ function DifficultySelection({ username, onBackHome, onSignOut }: { username?: s
 
   const handleDifficultySelect = (difficulty: string) => {
     setSelectedDifficulty(difficulty);
-    console.log(`Selected difficulty: ${difficulty}`);
-    // Game will start here
+    setGameStarted(true);
   };
+
+  const handleBackToDifficulty = () => {
+    setGameStarted(false);
+    setSelectedDifficulty(null);
+  };
+
+  // If game is started, show the game component
+  if (gameStarted && selectedDifficulty) {
+    return <Game difficulty={selectedDifficulty} onBack={handleBackToDifficulty} />;
+  }
 
   return (
     <main className="min-h-screen w-full bg-gradient-to-b from-[#1a1a2e] to-[#16213e] flex items-center justify-center overflow-x-hidden p-4 relative">
@@ -465,6 +494,14 @@ function DifficultySelection({ username, onBackHome, onSignOut }: { username?: s
           ))}
         </div>
 
+        {/* Tutorial Button */}
+        <button
+          onClick={() => setShowTutorial(true)}
+          className="px-8 py-3 bg-[#0f3460] border-2 border-[#533483] rounded-xl font-bold font-mono text-white hover:border-[#e94560] transition-all cursor-pointer"
+        >
+          📖 HOW TO PLAY
+        </button>
+
         {/* Back to Home */}
         <button
           onClick={onBackHome}
@@ -473,6 +510,47 @@ function DifficultySelection({ username, onBackHome, onSignOut }: { username?: s
           ← Back to Home
         </button>
       </div>
+
+      {/* Tutorial Modal */}
+      {showTutorial && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4"
+          onClick={() => setShowTutorial(false)}
+        >
+          <div 
+            className="bg-gradient-to-b from-[#1a1a2e] to-[#16213e] rounded-2xl shadow-2xl border-4 border-[#e94560] max-w-2xl w-full p-8"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-3xl font-black font-mono text-[#e94560]">HOW TO PLAY</h2>
+              <button
+                onClick={() => setShowTutorial(false)}
+                className="text-gray-400 hover:text-white transition-colors text-2xl cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="mb-6">
+              <Tutorial />
+            </div>
+
+            <div className="space-y-3 text-white font-mono text-sm">
+              <p>• Select <span className="text-[#e94560] font-bold">3 squares</span> from the grid</p>
+              <p>• These squares will <span className="text-[#e94560] font-bold">overlay</span> on top of each other</p>
+              <p>• The combined result must match the <span className="text-[#e94560] font-bold">target pattern</span></p>
+              <p>• Colors <span className="text-[#e94560] font-bold">cannot overlap</span> (no color on color)</p>
+            </div>
+
+            <button
+              onClick={() => setShowTutorial(false)}
+              className="w-full mt-6 px-8 py-3 bg-gradient-to-r from-[#e94560] to-[#ff6b6b] rounded-lg font-bold font-mono text-white hover:shadow-lg transition-all cursor-pointer"
+            >
+              GOT IT!
+            </button>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
