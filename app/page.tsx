@@ -1,38 +1,144 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { signUp, signIn, signOut, getCurrentUserProfile, isSessionValid, User } from '@/lib/supabase';
+import { useInactivityTimeout } from '@/lib/useInactivityTimeout';
 
 export default function Home() {
   const [isPressed, setIsPressed] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [isLogin, setIsLogin] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [showDifficulty, setShowDifficulty] = useState(false);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [username, setUsername] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  // Check if user is already logged in on mount
+  useEffect(() => {
+    const checkUser = async () => {
+      try {
+        const isValid = await isSessionValid();
+        if (!isValid) {
+          setIsAuthenticated(false);
+          setCurrentUser(null);
+          setShowDifficulty(false);
+          return;
+        }
+        
+        const profile = await getCurrentUserProfile();
+        if (profile) {
+          setCurrentUser(profile);
+          setIsAuthenticated(true);
+        }
+      } catch {
+        // User not logged in
+        setIsAuthenticated(false);
+        setCurrentUser(null);
+      }
+    };
+    checkUser();
+    
+    // Check session validity every 2 minutes
+    const interval = setInterval(checkUser, 2 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Auto-logout after 5 minutes of inactivity
+  useInactivityTimeout(() => {
+    if (isAuthenticated) {
+      handleSignOut();
+    }
+  }, 5); // 5 minutes timeout
 
   const handlePlay = () => {
-    setShowModal(true);
+    if (isAuthenticated) {
+      // If already logged in, go straight to difficulty
+      setShowDifficulty(true);
+    } else {
+      // Otherwise show login modal
+      setShowModal(true);
+    }
   };
 
   const handleCloseModal = () => {
     setShowModal(false);
+    setError('');
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log(isLogin ? 'Login submitted' : 'Signup submitted');
-    // Authentication logic will go here
-    setIsAuthenticated(true);
-    setShowModal(false);
+    setError('');
+    setLoading(true);
+
+    try {
+      if (isLogin) {
+        // Login
+        await signIn(email, password);
+        const profile = await getCurrentUserProfile();
+        setCurrentUser(profile);
+        setIsAuthenticated(true);
+        setShowModal(false);
+        setShowDifficulty(true);
+        // Clear form
+        setEmail('');
+        setPassword('');
+      } else {
+        // Sign up
+        if (password !== confirmPassword) {
+          setError('Passwords do not match');
+          setLoading(false);
+          return;
+        }
+        await signUp({ email, password, username });
+        const profile = await getCurrentUserProfile();
+        setCurrentUser(profile);
+        setIsAuthenticated(true);
+        setShowModal(false);
+        setShowDifficulty(true);
+        // Clear form
+        setEmail('');
+        setPassword('');
+        setUsername('');
+        setConfirmPassword('');
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'An error occurred';
+      setError(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      setCurrentUser(null);
+      setIsAuthenticated(false);
+      setShowDifficulty(false);
+    } catch (err) {
+      console.error('Error signing out:', err);
+    }
   };
 
   const handleGuestSignIn = () => {
-    console.log('Guest sign in');
     setIsAuthenticated(true);
     setShowModal(false);
+    setShowDifficulty(true);
+    setCurrentUser(null); // Guest has no profile
   };
 
-  // Show difficulty selection screen if authenticated
-  if (isAuthenticated) {
-    return <DifficultySelection />;
+  const handleBackHome = () => {
+    setShowDifficulty(false);
+  };
+
+  // Show difficulty selection screen
+  if (showDifficulty) {
+    return <DifficultySelection username={currentUser?.username} onBackHome={handleBackHome} onSignOut={handleSignOut} />;
   }
 
   return (
@@ -166,6 +272,8 @@ export default function Home() {
                     <input
                       type="text"
                       required
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
                       className="w-full px-4 py-3 bg-[#0f3460] border border-[#533483] rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-[#e94560] transition-colors"
                       placeholder="Choose a username"
                     />
@@ -179,6 +287,8 @@ export default function Home() {
                   <input
                     type="email"
                     required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
                     className="w-full px-4 py-3 bg-[#0f3460] border border-[#533483] rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-[#e94560] transition-colors"
                     placeholder="your@email.com"
                   />
@@ -191,6 +301,8 @@ export default function Home() {
                   <input
                     type="password"
                     required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
                     className="w-full px-4 py-3 bg-[#0f3460] border border-[#533483] rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-[#e94560] transition-colors"
                     placeholder="••••••••"
                   />
@@ -204,17 +316,26 @@ export default function Home() {
                     <input
                       type="password"
                       required
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
                       className="w-full px-4 py-3 bg-[#0f3460] border border-[#533483] rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-[#e94560] transition-colors"
                       placeholder="••••••••"
                     />
                   </div>
                 )}
 
+                {error && (
+                  <div className="p-3 bg-red-500/20 border border-red-500 rounded-lg text-red-300 text-sm font-mono">
+                    {error}
+                  </div>
+                )}
+
                 <button
                   type="submit"
-                  className="w-full py-3 bg-gradient-to-r from-[#e94560] to-[#ff6b6b] rounded-lg font-bold font-mono text-white hover:shadow-lg hover:shadow-[#e94560]/50 transition-all cursor-pointer"
+                  disabled={loading}
+                  className="w-full py-3 bg-gradient-to-r from-[#e94560] to-[#ff6b6b] rounded-lg font-bold font-mono text-white hover:shadow-lg hover:shadow-[#e94560]/50 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {isLogin ? 'LOGIN' : 'CREATE ACCOUNT'}
+                  {loading ? 'LOADING...' : (isLogin ? 'LOGIN' : 'CREATE ACCOUNT')}
                 </button>
               </form>
 
@@ -256,7 +377,7 @@ export default function Home() {
 }
 
 // Difficulty Selection Component
-function DifficultySelection() {
+function DifficultySelection({ username, onBackHome, onSignOut }: { username?: string | null, onBackHome: () => void, onSignOut: () => void }) {
   const [selectedDifficulty, setSelectedDifficulty] = useState<string | null>(null);
 
   const difficulties = [
@@ -287,7 +408,22 @@ function DifficultySelection() {
   };
 
   return (
-    <main className="min-h-screen w-full bg-gradient-to-b from-[#1a1a2e] to-[#16213e] flex items-center justify-center overflow-x-hidden p-4">
+    <main className="min-h-screen w-full bg-gradient-to-b from-[#1a1a2e] to-[#16213e] flex items-center justify-center overflow-x-hidden p-4 relative">
+      {/* User Profile Indicator */}
+      {username && (
+        <div className="absolute top-6 right-6 flex items-center gap-3 bg-[#0f3460] border-2 border-[#e94560] rounded-xl px-5 py-3 shadow-lg">
+          <span className="text-white font-mono font-bold text-sm">
+            Hi, {username}
+          </span>
+          <button
+            onClick={onSignOut}
+            className="bg-[#e94560] hover:bg-[#ff6b6b] text-white font-mono text-xs px-3 py-2 rounded-lg transition-all cursor-pointer"
+          >
+            Sign Out
+          </button>
+        </div>
+      )}
+
       <div className="flex flex-col items-center justify-center space-y-12 w-full max-w-2xl">
         {/* Title */}
         <div className="flex flex-col items-center justify-center space-y-2 w-full">
@@ -329,9 +465,9 @@ function DifficultySelection() {
           ))}
         </div>
 
-        {/* Back to Home - Optional */}
+        {/* Back to Home */}
         <button
-          onClick={() => window.location.reload()}
+          onClick={onBackHome}
           className="text-gray-400 hover:text-white font-mono text-sm cursor-pointer transition-colors"
         >
           ← Back to Home
